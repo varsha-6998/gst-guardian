@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Upload, FileText, ShieldCheck, AlertTriangle, ArrowRight, Sparkles, TrendingUp, Loader2,
+  Upload, FileText, ShieldCheck, AlertTriangle, ArrowRight, Sparkles, TrendingUp,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, Legend,
@@ -34,13 +35,25 @@ function DashboardPage() {
 
   useEffect(() => {
     if (!user) return;
-    (async () => {
+    const fetchRows = async () => {
       const { data } = await supabase
         .from("invoices")
         .select("id, status, fraud_risk, compliance_score, total_amount, seller_name, invoice_number, created_at")
         .order("created_at", { ascending: false });
       setRows((data ?? []) as InvoiceRow[]);
-    })();
+    };
+    fetchRows();
+    const channel = supabase
+      .channel("invoices-dashboard")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "invoices", filter: `user_id=eq.${user.id}` },
+        () => fetchRows(),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const name = user?.user_metadata?.display_name ?? user?.email?.split("@")[0] ?? "there";
@@ -48,8 +61,15 @@ function DashboardPage() {
   if (rows === null) {
     return (
       <AppShell>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <div className="p-6 md:p-10 max-w-6xl space-y-6">
+          <Skeleton className="h-10 w-72" />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl" />)}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Skeleton className="h-72 md:col-span-2 rounded-2xl" />
+            <Skeleton className="h-72 rounded-2xl" />
+          </div>
         </div>
       </AppShell>
     );
