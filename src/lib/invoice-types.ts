@@ -24,7 +24,7 @@ export interface Invoice {
   sgst: number | null;
   igst: number | null;
   total_amount: number | null;
-  issues: string[] | null;
+  issues: Array<string | ValidationItem> | null;
   suggestions: string[] | null;
   created_at: string;
 }
