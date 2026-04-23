@@ -19,11 +19,15 @@ import { toast } from "sonner";
 import {
   Search, Download, Trash2, FileText, Loader2, Eye, ShieldAlert, ShieldCheck,
   RefreshCw, MoreHorizontal, FileSpreadsheet, FileDown, ChevronDown,
+  XCircle, AlertTriangle, Lightbulb, CheckCircle2,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import type { Invoice } from "@/lib/invoice-types";
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type { Invoice, ValidationItem } from "@/lib/invoice-types";
 import { exportBulkPdf, exportCsv, exportXlsx } from "@/lib/export-utils";
 
 export const Route = createFileRoute("/invoices")({
