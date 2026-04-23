@@ -1,4 +1,12 @@
 // Shared invoice row type used across list, dashboard, and exports.
+export interface ValidationItem {
+  severity: "error" | "warning";
+  field: string;
+  issue: string;
+  message: string;
+  suggestion?: string;
+}
+
 export interface Invoice {
   id: string;
   user_id: string;
