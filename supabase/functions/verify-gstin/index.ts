@@ -67,13 +67,16 @@ Deno.serve(async (req) => {
     }
 
     // Compliance + fraud scoring
-    const { score: complianceScore, issues, suggestions } = scoreCompliance(invoice, gstinResult);
+    const { score: complianceScore, items, issues, suggestions } = scoreCompliance(invoice, gstinResult);
     const { fraudScore, fraudRisk, fraudReasons } = await detectFraud(admin, invoice, gstinResult, userId);
 
+    const errors = items.filter((i) => i.severity === "error");
+    const warnings = items.filter((i) => i.severity === "warning");
+
     let status: "valid" | "warning" | "error" = "valid";
-    if (fraudRisk === "high" || gstinResult.status === "Cancelled" || issues.some((i: string) => i.toLowerCase().includes("invalid gstin"))) {
+    if (errors.length > 0 || fraudRisk === "high" || gstinResult.status === "Cancelled") {
       status = "error";
-    } else if (fraudRisk === "medium" || issues.length > 0 || !gstinResult.verified) {
+    } else if (warnings.length > 0 || fraudRisk === "medium" || !gstinResult.verified) {
       status = "warning";
     }
 
@@ -89,7 +92,7 @@ Deno.serve(async (req) => {
         fraud_score: fraudScore,
         fraud_risk: fraudRisk,
         fraud_reasons: fraudReasons,
-        issues,
+        issues: items, // structured items stored in jsonb
         suggestions,
         status,
       })
@@ -103,7 +106,9 @@ Deno.serve(async (req) => {
         fraudScore,
         fraudRisk,
         status,
-        issues,
+        errors,
+        warnings,
+        issues, // back-compat flat strings
         suggestions,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
