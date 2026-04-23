@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -19,46 +19,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Set listener FIRST (best practice)
+    let mounted = true;
+
+    async function fetchRole(userId: string) {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .order("role", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (!mounted) return;
+      setRole((data?.role as AppRole) ?? "user");
+    }
+
+    // Listener FIRST
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return;
       setSession(newSession);
       setUser(newSession?.user ?? null);
-      if (newSession?.user) {
-        // defer role fetch to avoid deadlock
-        setTimeout(() => fetchRole(newSession.user.id), 0);
-      } else {
-        setRole(null);
+
+      const newUserId = newSession?.user?.id ?? null;
+      // Only refetch role if user actually changed (ignore TOKEN_REFRESHED etc.)
+      if (newUserId !== lastUserIdRef.current) {
+        lastUserIdRef.current = newUserId;
+        if (newUserId) {
+          setTimeout(() => {
+            if (mounted) fetchRole(newUserId);
+          }, 0);
+        } else {
+          setRole(null);
+        }
       }
+      setLoading(false);
     });
 
+    // Then check existing session
     supabase.auth.getSession().then(({ data: { session: existing } }) => {
+      if (!mounted) return;
       setSession(existing);
       setUser(existing?.user ?? null);
-      if (existing?.user) {
-        fetchRole(existing.user.id).finally(() => setLoading(false));
+      const uid = existing?.user?.id ?? null;
+      if (uid && uid !== lastUserIdRef.current) {
+        lastUserIdRef.current = uid;
+        fetchRole(uid).finally(() => {
+          if (mounted) setLoading(false);
+        });
       } else {
         setLoading(false);
       }
     });
 
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
-
-  async function fetchRole(userId: string) {
-    const { data } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .order("role", { ascending: true }) // admin < user alphabetically
-      .limit(1)
-      .maybeSingle();
-    setRole((data?.role as AppRole) ?? "user");
-  }
 
   async function signOut() {
     await supabase.auth.signOut();
+    lastUserIdRef.current = null;
     setSession(null);
     setUser(null);
     setRole(null);
