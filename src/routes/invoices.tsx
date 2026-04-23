@@ -532,11 +532,174 @@ function Field({ label, value, mono, small }: { label: string; value: string | n
 
 // ---------- Validation breakdown ----------
 
+// Human-readable explanations + fix tips for known issue keywords.
+// Used when a legacy record only has a flat string instead of structured data.
+const ISSUE_HINTS: Array<{
+  match: RegExp;
+  severity: "error" | "warning";
+  field: string;
+  message: string;
+  suggestion: string;
+}> = [
+  {
+    match: /invalid gstin|gstin.*invalid|gstin format/i,
+    severity: "error",
+    field: "GSTIN",
+    message:
+      "The GSTIN on this invoice does not match the official 15-character format (2 digits state code + 10-char PAN + entity digit + 'Z' + check digit). Invoices with malformed GSTINs are rejected by the GST portal and ITC cannot be claimed.",
+    suggestion: "Re-check the GSTIN with the seller. Example of a valid format: 29ABCDE1234F1Z5.",
+  },
+  {
+    match: /missing gstin|no gstin/i,
+    severity: "error",
+    field: "GSTIN",
+    message:
+      "No GSTIN was detected on this invoice. A GSTIN is mandatory on every B2B tax invoice — without it, the invoice is not GST-compliant and you cannot claim Input Tax Credit.",
+    suggestion: "Request a corrected invoice from the seller that includes their 15-character GSTIN.",
+  },
+  {
+    match: /gstin.*(cancelled|inactive|suspended)|status.*cancelled/i,
+    severity: "error",
+    field: "GSTIN",
+    message:
+      "The GSTIN exists in the GST registry but is no longer Active. Invoices issued under a Cancelled or Suspended GSTIN are not valid for ITC and may invite scrutiny.",
+    suggestion: "Confirm with the seller — they may have a new GSTIN, or the invoice should not have been issued.",
+  },
+  {
+    match: /gstin.*(not verified|could not be verified|unverified)/i,
+    severity: "warning",
+    field: "GSTIN",
+    message:
+      "We could not confirm this GSTIN against the live GST registry. The format looks correct, but the registry lookup failed or returned no record. The GSTIN may be very recently issued, or the lookup service was unreachable.",
+    suggestion: "Re-run verification in a few minutes, or confirm the GSTIN directly with the seller.",
+  },
+  {
+    match: /missing invoice number|no invoice number/i,
+    severity: "error",
+    field: "Invoice Number",
+    message:
+      "Every tax invoice must carry a unique sequential invoice number (Rule 46 of CGST Rules). Without one, the document is not a valid tax invoice.",
+    suggestion: "Ask the seller to re-issue the invoice with a proper invoice number.",
+  },
+  {
+    match: /missing invoice date|no invoice date/i,
+    severity: "error",
+    field: "Invoice Date",
+    message:
+      "The invoice date is missing. The date of issue determines the tax period and the time limit for claiming ITC, so it is mandatory.",
+    suggestion: "Request a corrected invoice that clearly shows the date of issue.",
+  },
+  {
+    match: /missing total|no total amount/i,
+    severity: "error",
+    field: "Total Amount",
+    message:
+      "The final payable total is missing from the invoice. Without a total, the document cannot be reconciled or filed.",
+    suggestion: "Verify with the seller and request a corrected invoice with a clear total.",
+  },
+  {
+    match: /tax calculation|tax mismatch|incorrect tax/i,
+    severity: "error",
+    field: "Tax Calculation",
+    message:
+      "Taxable value + CGST + SGST + IGST does not add up to the stated total amount. This usually points to a data entry mistake or an incorrect tax rate applied on the invoice.",
+    suggestion: "Re-verify each line item, the applied tax rate, and the taxable value.",
+  },
+  {
+    match: /both cgst.*igst|cgst.*and.*igst/i,
+    severity: "error",
+    field: "Tax Type",
+    message:
+      "An invoice should charge either CGST + SGST (intra-state supply) OR IGST (inter-state supply) — never both. This indicates an incorrect place-of-supply determination.",
+    suggestion: "Identify the correct place of supply and request a corrected invoice with only the right tax type.",
+  },
+  {
+    match: /seller name|name mismatch/i,
+    severity: "warning",
+    field: "Seller Name",
+    message:
+      "The seller name printed on the invoice does not closely match the legal/trade name registered against this GSTIN in the GST database. This can be a data-entry difference, but it can also indicate an impersonation attempt.",
+    suggestion: "Confirm the seller's identity and that the GSTIN truly belongs to them.",
+  },
+  {
+    match: /missing buyer|no buyer/i,
+    severity: "warning",
+    field: "Buyer Name",
+    message:
+      "Buyer details were not detected on the invoice. Buyer name and GSTIN are required for the recipient to claim Input Tax Credit.",
+    suggestion: "Verify that the buyer block is present and legible on the original invoice.",
+  },
+  {
+    match: /old invoice|date.*old/i,
+    severity: "warning",
+    field: "Invoice Date",
+    message:
+      "This invoice is more than a year old. ITC under GST has time limits (generally up to 30th November of the following financial year), so very old invoices may no longer be claimable.",
+    suggestion: "Confirm the date is correct and check whether the ITC eligibility window has passed.",
+  },
+  {
+    match: /duplicate/i,
+    severity: "error",
+    field: "Duplicate",
+    message:
+      "An invoice with the same content (or the same invoice number for the same seller) already exists in your account. Claiming ITC twice on the same invoice is not allowed and is a common audit trigger.",
+    suggestion: "Open both records side-by-side and delete the duplicate after confirming.",
+  },
+  {
+    match: /unusual.*tax|abnormal.*tax|tax rate/i,
+    severity: "warning",
+    field: "Tax Rate",
+    message:
+      "The effective tax rate on this invoice falls well outside typical GST slabs (5%, 12%, 18%, 28%). This can indicate a wrong rate, missing tax components, or a fabricated invoice.",
+    suggestion: "Confirm the HSN/SAC codes and the GST rate that applies to this supply.",
+  },
+];
+
+function explainFlatIssue(raw: string): ValidationItem {
+  // Try "Field: Issue" pattern first.
+  const colon = raw.indexOf(":");
+  let field = "General";
+  let issue = raw.trim();
+  if (colon > 0 && colon < 40) {
+    field = raw.slice(0, colon).trim();
+    issue = raw.slice(colon + 1).trim();
+  }
+
+  const hint = ISSUE_HINTS.find((h) => h.match.test(raw));
+  if (hint) {
+    return {
+      severity: hint.severity,
+      field: hint.field,
+      issue: issue || hint.field,
+      message: hint.message,
+      suggestion: hint.suggestion,
+    };
+  }
+
+  // Unknown issue — still surface the raw text but mark it clearly.
+  return {
+    severity: "warning",
+    field,
+    issue,
+    message: `${issue}. We don't have a detailed explanation for this specific check — re-process the invoice to get the latest validation details.`,
+    suggestion: "Re-upload or re-validate the invoice to refresh the analysis.",
+  };
+}
+
 function normalizeItems(raw: Invoice["issues"]): ValidationItem[] {
   if (!raw || raw.length === 0) return [];
   return raw.map((it) => {
-    if (typeof it === "string") {
-      return { severity: "warning", field: "General", issue: it, message: it };
+    if (typeof it === "string") return explainFlatIssue(it);
+    // Structured item — backfill a generic message if upstream omitted it.
+    if (!it.message || it.message === it.issue) {
+      const hint = ISSUE_HINTS.find((h) => h.match.test(`${it.field} ${it.issue}`));
+      if (hint) {
+        return {
+          ...it,
+          message: it.message && it.message !== it.issue ? it.message : hint.message,
+          suggestion: it.suggestion ?? hint.suggestion,
+        };
+      }
     }
     return it;
   });
