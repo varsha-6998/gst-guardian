@@ -1,7 +1,7 @@
 project_id = "hsmxljtkvyqrwkhssrtd"
 
 [functions.process-invoice]
-verify_jwt = true
+verify_jwt = false
 
 [functions.verify-gstin]
-verify_jwt = true
+verify_jwt = false
