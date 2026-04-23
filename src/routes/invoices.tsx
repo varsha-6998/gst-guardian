@@ -481,27 +481,13 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
               </div>
             </div>
 
-            {invoice.issues && invoice.issues.length > 0 && (
-              <div>
-                <p className="text-xs uppercase text-muted-foreground tracking-wider mb-2">Issues</p>
-                <ul className="space-y-1 text-sm">
-                  {invoice.issues.map((i, idx) => <li key={idx} className="text-warning">• {i}</li>)}
-                </ul>
-              </div>
-            )}
+            <ValidationBreakdown items={invoice.issues} suggestions={invoice.suggestions} />
+
             {invoice.fraud_reasons && invoice.fraud_reasons.length > 0 && (
               <div>
                 <p className="text-xs uppercase text-muted-foreground tracking-wider mb-2">Fraud signals</p>
                 <ul className="space-y-1 text-sm">
                   {invoice.fraud_reasons.map((i, idx) => <li key={idx} className="text-destructive">• {i}</li>)}
-                </ul>
-              </div>
-            )}
-            {invoice.suggestions && invoice.suggestions.length > 0 && (
-              <div>
-                <p className="text-xs uppercase text-muted-foreground tracking-wider mb-2">Suggestions</p>
-                <ul className="space-y-1 text-sm">
-                  {invoice.suggestions.map((i, idx) => <li key={idx} className="text-muted-foreground">• {i}</li>)}
                 </ul>
               </div>
             )}
