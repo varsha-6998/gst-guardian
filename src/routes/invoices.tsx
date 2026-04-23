@@ -333,12 +333,17 @@ function InvoicesPage() {
                         {r.fraud_risk && <RiskBadge risk={r.fraud_risk} />}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <StatusBadge status={r.status} />
+                        <StatusBadgeWithCounts status={r.status} issues={r.issues} />
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => setSelected(r)}>
-                            <Eye className="h-4 w-4" />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSelected(r)}
+                            title="View details"
+                          >
+                            <Eye className="h-4 w-4 mr-1" /> Details
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
