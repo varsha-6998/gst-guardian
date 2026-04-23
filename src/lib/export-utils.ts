@@ -47,7 +47,7 @@ function row(inv: Invoice) {
     inv.fraud_score ?? "",
     inv.fraud_risk ?? "",
     inv.status,
-    (inv.issues ?? []).join(" | "),
+    (inv.issues ?? []).map((i) => (typeof i === "string" ? i : `${i.field}: ${i.issue}`)).join(" | "),
     (inv.fraud_reasons ?? []).join(" | "),
     inv.file_name,
   ];

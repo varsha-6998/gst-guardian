@@ -19,11 +19,15 @@ import { toast } from "sonner";
 import {
   Search, Download, Trash2, FileText, Loader2, Eye, ShieldAlert, ShieldCheck,
   RefreshCw, MoreHorizontal, FileSpreadsheet, FileDown, ChevronDown,
+  XCircle, AlertTriangle, Lightbulb, CheckCircle2,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
-import type { Invoice } from "@/lib/invoice-types";
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type { Invoice, ValidationItem } from "@/lib/invoice-types";
 import { exportBulkPdf, exportCsv, exportXlsx } from "@/lib/export-utils";
 
 export const Route = createFileRoute("/invoices")({
@@ -329,12 +333,17 @@ function InvoicesPage() {
                         {r.fraud_risk && <RiskBadge risk={r.fraud_risk} />}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <StatusBadge status={r.status} />
+                        <StatusBadgeWithCounts status={r.status} issues={r.issues} />
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => setSelected(r)}>
-                            <Eye className="h-4 w-4" />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSelected(r)}
+                            title="View details"
+                          >
+                            <Eye className="h-4 w-4 mr-1" /> Details
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -481,27 +490,13 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
               </div>
             </div>
 
-            {invoice.issues && invoice.issues.length > 0 && (
-              <div>
-                <p className="text-xs uppercase text-muted-foreground tracking-wider mb-2">Issues</p>
-                <ul className="space-y-1 text-sm">
-                  {invoice.issues.map((i, idx) => <li key={idx} className="text-warning">• {i}</li>)}
-                </ul>
-              </div>
-            )}
+            <ValidationBreakdown items={invoice.issues} suggestions={invoice.suggestions} />
+
             {invoice.fraud_reasons && invoice.fraud_reasons.length > 0 && (
               <div>
                 <p className="text-xs uppercase text-muted-foreground tracking-wider mb-2">Fraud signals</p>
                 <ul className="space-y-1 text-sm">
                   {invoice.fraud_reasons.map((i, idx) => <li key={idx} className="text-destructive">• {i}</li>)}
-                </ul>
-              </div>
-            )}
-            {invoice.suggestions && invoice.suggestions.length > 0 && (
-              <div>
-                <p className="text-xs uppercase text-muted-foreground tracking-wider mb-2">Suggestions</p>
-                <ul className="space-y-1 text-sm">
-                  {invoice.suggestions.map((i, idx) => <li key={idx} className="text-muted-foreground">• {i}</li>)}
                 </ul>
               </div>
             )}
@@ -531,6 +526,164 @@ function Field({ label, value, mono, small }: { label: string; value: string | n
     <div>
       <p className="text-xs uppercase text-muted-foreground tracking-wider">{label}</p>
       <p className={`${mono ? "font-mono" : ""} ${small ? "text-sm" : "text-base"} font-medium mt-0.5`}>{value ?? "—"}</p>
+    </div>
+  );
+}
+
+// ---------- Validation breakdown ----------
+
+function normalizeItems(raw: Invoice["issues"]): ValidationItem[] {
+  if (!raw || raw.length === 0) return [];
+  return raw.map((it) => {
+    if (typeof it === "string") {
+      return { severity: "warning", field: "General", issue: it, message: it };
+    }
+    return it;
+  });
+}
+
+function StatusBadgeWithCounts({
+  status,
+  issues,
+}: {
+  status: Invoice["status"];
+  issues: Invoice["issues"];
+}) {
+  const items = normalizeItems(issues);
+  const errors = items.filter((i) => i.severity === "error").length;
+  const warnings = items.filter((i) => i.severity === "warning").length;
+
+  const tip =
+    status === "valid"
+      ? "All checks passed"
+      : [
+          errors > 0 ? `${errors} error${errors > 1 ? "s" : ""}` : null,
+          warnings > 0 ? `${warnings} warning${warnings > 1 ? "s" : ""}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || `Status: ${status}`;
+
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="inline-flex items-center gap-1.5 cursor-default">
+            <StatusBadge status={status} />
+            {(errors > 0 || warnings > 0) && (
+              <span className="text-[10px] font-mono text-muted-foreground">
+                {errors > 0 && <span className="text-destructive">{errors}E</span>}
+                {errors > 0 && warnings > 0 && " "}
+                {warnings > 0 && <span className="text-warning">{warnings}W</span>}
+              </span>
+            )}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>{tip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ValidationBreakdown({
+  items: rawItems,
+  suggestions,
+}: {
+  items: Invoice["issues"];
+  suggestions: Invoice["suggestions"];
+}) {
+  const items = normalizeItems(rawItems);
+  const errors = items.filter((i) => i.severity === "error");
+  const warnings = items.filter((i) => i.severity === "warning");
+
+  if (errors.length === 0 && warnings.length === 0 && (!suggestions || suggestions.length === 0)) {
+    return (
+      <div className="rounded-lg border border-success/30 bg-success/5 p-3 flex items-start gap-2">
+        <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-medium text-success">All checks passed</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            No errors or warnings detected on this invoice.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {errors.length > 0 && (
+        <Section title={`Errors (${errors.length})`} icon={<XCircle className="h-4 w-4" />} tone="error">
+          {errors.map((it, idx) => <ItemCard key={`e${idx}`} item={it} tone="error" />)}
+        </Section>
+      )}
+      {warnings.length > 0 && (
+        <Section title={`Warnings (${warnings.length})`} icon={<AlertTriangle className="h-4 w-4" />} tone="warning">
+          {warnings.map((it, idx) => <ItemCard key={`w${idx}`} item={it} tone="warning" />)}
+        </Section>
+      )}
+      {suggestions && suggestions.length > 0 && (
+        <Section title={`Fix suggestions (${suggestions.length})`} icon={<Lightbulb className="h-4 w-4" />} tone="info">
+          <ul className="space-y-1.5 text-sm pl-1">
+            {suggestions.map((s, idx) => (
+              <li key={idx} className="flex gap-2 text-foreground/90">
+                <span className="text-primary">→</span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+    </div>
+  );
+}
+
+function Section({
+  title,
+  icon,
+  tone,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  tone: "error" | "warning" | "info";
+  children: React.ReactNode;
+}) {
+  const toneMap = {
+    error: "border-destructive/30 bg-destructive/5 text-destructive",
+    warning: "border-warning/30 bg-warning/5 text-warning",
+    info: "border-primary/30 bg-primary/5 text-primary",
+  };
+  return (
+    <div className={`rounded-lg border p-3 ${toneMap[tone]}`}>
+      <div className="flex items-center gap-2 mb-2 font-semibold text-sm">
+        {icon}
+        <span>{title}</span>
+      </div>
+      <div className="space-y-2">{children}</div>
+    </div>
+  );
+}
+
+function ItemCard({ item, tone }: { item: ValidationItem; tone: "error" | "warning" }) {
+  const dot = tone === "error" ? "bg-destructive" : "bg-warning";
+  return (
+    <div className="rounded-md bg-background/60 border border-border/50 p-2.5">
+      <div className="flex items-start gap-2">
+        <span className={`mt-1.5 h-1.5 w-1.5 rounded-full flex-shrink-0 ${dot}`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-foreground">{item.field}</p>
+            <Badge variant="outline" className="text-[10px] uppercase tracking-wider">{item.issue}</Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{item.message}</p>
+          {item.suggestion && (
+            <div className="mt-1.5 flex items-start gap-1.5 text-xs">
+              <Lightbulb className="h-3 w-3 text-primary flex-shrink-0 mt-0.5" />
+              <span className="text-foreground/80">{item.suggestion}</span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
