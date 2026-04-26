@@ -480,20 +480,40 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
 
   const isPdf = (invoice.file_name ?? "").toLowerCase().endsWith(".pdf");
 
+  // Update a single field on the invoice. Numbers are coerced; empty strings become null.
+  // After saving, kick off re-verification so compliance score / fraud risk / status stay consistent.
+  const saveField = async (
+    field: keyof Invoice,
+    raw: string,
+    kind: "text" | "number" | "date",
+  ) => {
+    let value: string | number | null = raw.trim() === "" ? null : raw.trim();
+    if (value !== null && kind === "number") {
+      const n = Number(value);
+      if (Number.isNaN(n)) throw new Error("Must be a number");
+      value = n;
+    }
+    if (value !== null && kind === "date") {
+      // Expect YYYY-MM-DD from <input type="date">
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw new Error("Invalid date");
+    }
+    const { error: upErr } = await supabase
+      .from("invoices")
+      .update({ [field]: value } as any)
+      .eq("id", invoice.id);
+    if (upErr) throw upErr;
+    const { error: vErr } = await supabase.functions.invoke("verify-gstin", {
+      body: { invoiceId: invoice.id },
+    });
+    if (vErr) throw vErr;
+  };
+
   const saveAndReverify = async () => {
     const next = gstinDraft.trim().toUpperCase();
     if (!next) return toast.error("GSTIN cannot be empty");
     setSavingGstin(true);
     try {
-      const { error: upErr } = await supabase
-        .from("invoices")
-        .update({ gstin: next })
-        .eq("id", invoice.id);
-      if (upErr) throw upErr;
-      const { error: vErr } = await supabase.functions.invoke("verify-gstin", {
-        body: { invoiceId: invoice.id },
-      });
-      if (vErr) throw vErr;
+      await saveField("gstin", next, "text");
       toast.success("GSTIN updated and re-verified");
       setEditingGstin(false);
       onClose();
@@ -549,16 +569,72 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
           <div className="space-y-4">
-            <Field label="Invoice number" value={invoice.invoice_number} />
-            <Field label="Invoice date" value={invoice.invoice_date} />
-            <Field label="Buyer" value={invoice.buyer_name} />
-            <Field label="Taxable amount" value={invoice.taxable_amount != null ? `₹${Number(invoice.taxable_amount).toLocaleString("en-IN")}` : null} mono />
+            <EditableField
+              label="Invoice number"
+              value={invoice.invoice_number}
+              onSave={(v) => saveField("invoice_number", v, "text")}
+            />
+            <EditableField
+              label="Invoice date"
+              value={invoice.invoice_date}
+              type="date"
+              onSave={(v) => saveField("invoice_date", v, "date")}
+            />
+            <EditableField
+              label="Seller name"
+              value={invoice.seller_name}
+              onSave={(v) => saveField("seller_name", v, "text")}
+            />
+            <EditableField
+              label="Buyer name"
+              value={invoice.buyer_name}
+              onSave={(v) => saveField("buyer_name", v, "text")}
+            />
+            <EditableField
+              label="Taxable amount"
+              value={invoice.taxable_amount != null ? String(invoice.taxable_amount) : null}
+              type="number"
+              prefix="₹"
+              mono
+              onSave={(v) => saveField("taxable_amount", v, "number")}
+            />
             <div className="grid grid-cols-3 gap-2">
-              <Field label="CGST" value={invoice.cgst != null ? `₹${invoice.cgst}` : null} mono small />
-              <Field label="SGST" value={invoice.sgst != null ? `₹${invoice.sgst}` : null} mono small />
-              <Field label="IGST" value={invoice.igst != null ? `₹${invoice.igst}` : null} mono small />
+              <EditableField
+                label="CGST"
+                value={invoice.cgst != null ? String(invoice.cgst) : null}
+                type="number"
+                prefix="₹"
+                mono
+                small
+                onSave={(v) => saveField("cgst", v, "number")}
+              />
+              <EditableField
+                label="SGST"
+                value={invoice.sgst != null ? String(invoice.sgst) : null}
+                type="number"
+                prefix="₹"
+                mono
+                small
+                onSave={(v) => saveField("sgst", v, "number")}
+              />
+              <EditableField
+                label="IGST"
+                value={invoice.igst != null ? String(invoice.igst) : null}
+                type="number"
+                prefix="₹"
+                mono
+                small
+                onSave={(v) => saveField("igst", v, "number")}
+              />
             </div>
-            <Field label="Total" value={invoice.total_amount != null ? `₹${Number(invoice.total_amount).toLocaleString("en-IN")}` : null} mono />
+            <EditableField
+              label="Total"
+              value={invoice.total_amount != null ? String(invoice.total_amount) : null}
+              type="number"
+              prefix="₹"
+              mono
+              onSave={(v) => saveField("total_amount", v, "number")}
+            />
 
             <div className="rounded-lg border border-border p-3">
               <p className="text-xs uppercase text-muted-foreground tracking-wider mb-2">GSTIN Verification</p>
@@ -638,6 +714,108 @@ function Field({ label, value, mono, small }: { label: string; value: string | n
     <div>
       <p className="text-xs uppercase text-muted-foreground tracking-wider">{label}</p>
       <p className={`${mono ? "font-mono" : ""} ${small ? "text-sm" : "text-base"} font-medium mt-0.5`}>{value ?? "—"}</p>
+    </div>
+  );
+}
+
+// Inline-editable field used in the invoice details panel.
+// Click pencil → edit input → Save (persists to DB and triggers re-verification via onSave).
+function EditableField({
+  label,
+  value,
+  onSave,
+  type = "text",
+  prefix,
+  mono,
+  small,
+}: {
+  label: string;
+  value: string | null;
+  onSave: (next: string) => Promise<void>;
+  type?: "text" | "number" | "date";
+  prefix?: string;
+  mono?: boolean;
+  small?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(value ?? "");
+  }, [value]);
+
+  const display = (() => {
+    if (value == null || value === "") return "—";
+    if (type === "number" && prefix) {
+      const n = Number(value);
+      return Number.isFinite(n) ? `${prefix}${n.toLocaleString("en-IN")}` : `${prefix}${value}`;
+    }
+    return value;
+  })();
+
+  const commit = async () => {
+    setSaving(true);
+    try {
+      await onSave(draft);
+      toast.success(`${label} updated`);
+      setEditing(false);
+    } catch (e: any) {
+      toast.error(e?.message ?? `Failed to update ${label}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    setDraft(value ?? "");
+    setEditing(false);
+  };
+
+  return (
+    <div className="group">
+      <p className="text-xs uppercase text-muted-foreground tracking-wider flex items-center gap-2">
+        {label}
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:underline inline-flex items-center gap-1 normal-case"
+            title={`Edit ${label}`}
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        )}
+      </p>
+      {editing ? (
+        <div className="flex items-center gap-1 mt-1">
+          <Input
+            type={type}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={saving}
+            className={`h-8 ${mono ? "font-mono" : ""} ${small ? "text-xs" : "text-sm"}`}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") cancel();
+            }}
+          />
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={commit} disabled={saving} title="Save & re-verify">
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={cancel} disabled={saving} title="Cancel">
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      ) : (
+        <p
+          className={`${mono ? "font-mono" : ""} ${small ? "text-sm" : "text-base"} font-medium mt-0.5 cursor-text`}
+          onClick={() => setEditing(true)}
+        >
+          {display}
+        </p>
+      )}
     </div>
   );
 }
