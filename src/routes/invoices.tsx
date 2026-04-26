@@ -424,6 +424,13 @@ function StatusBadge({ status }: { status: Invoice["status"] }) {
   return <Badge variant="outline" className={map[status]}>{status}</Badge>;
 }
 
+// Treat invoices stuck >2 minutes in `processing` as retryable.
+function isStuck(r: Invoice): boolean {
+  if (r.status !== "processing") return false;
+  const age = Date.now() - new Date(r.created_at).getTime();
+  return age > 2 * 60 * 1000;
+}
+
 function RiskBadge({ risk }: { risk: "low" | "medium" | "high" }) {
   const map = {
     low: "bg-success/15 text-success border-success/30",
