@@ -19,11 +19,15 @@ export const Route = createFileRoute("/upload")({
   ),
 });
 
-type Stage = "queued" | "hashing" | "uploading" | "ocr" | "verifying" | "done" | "error";
+type Stage = "queued" | "splitting" | "hashing" | "uploading" | "ocr" | "verifying" | "done" | "error";
 
 interface Item {
   id: string;
-  file: File;
+  file: File | Blob;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  pageInfo?: { page: number; total: number };
   stage: Stage;
   progress: number;
   message?: string;
@@ -66,11 +70,11 @@ function UploadPage() {
 
         // 2. Upload to storage
         updateItem(item.id, { stage: "uploading", progress: 20 });
-        const ext = item.file.name.split(".").pop() ?? "bin";
+        const ext = item.fileName.split(".").pop() ?? "bin";
         const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
         const { error: upErr } = await supabase.storage
           .from("invoices")
-          .upload(path, item.file, { contentType: item.file.type, upsert: false });
+          .upload(path, item.file, { contentType: item.fileType, upsert: false });
         if (upErr) throw new Error(upErr.message);
 
         // 3. Insert invoice row
@@ -79,9 +83,9 @@ function UploadPage() {
           .insert({
             user_id: user.id,
             file_path: path,
-            file_name: item.file.name,
-            file_size: item.file.size,
-            mime_type: item.file.type,
+            file_name: item.fileName,
+            file_size: item.fileSize,
+            mime_type: item.fileType,
             file_hash: hashHex,
             status: "processing",
           })
@@ -93,9 +97,7 @@ function UploadPage() {
         // 4. OCR — try AI first, fall back to Tesseract for non-images or AI failure
         updateItem(item.id, { stage: "ocr", progress: 45, message: "AI extracting fields…" });
         let ocrText: string | undefined;
-        const isImage = item.file.type.startsWith("image/");
-        // For PDFs we always need client OCR text (or pass nothing and let AI try)
-        // Strategy: try AI directly with the file; if AI fails AND it's an image, run Tesseract and retry.
+        const isImage = item.fileType.startsWith("image/");
 
         let extracted: any = null;
         let usedFallback = false;
@@ -105,7 +107,7 @@ function UploadPage() {
             body: {
               invoiceId: inserted.id,
               filePath: path,
-              mimeType: item.file.type,
+              mimeType: item.fileType,
               ocrText: textForFallback,
             },
           });
@@ -184,15 +186,69 @@ function UploadPage() {
   );
 
   const onDrop = useCallback(
-    (accepted: File[]) => {
-      const newItems: Item[] = accepted.map((f) => ({
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        file: f,
-        stage: "queued",
-        progress: 0,
-      }));
-      setItems((prev) => [...newItems, ...prev]);
-      newItems.forEach((it) => processOne(it));
+    async (accepted: File[]) => {
+      // Expand each PDF into one queued item per page; non-PDFs pass through.
+      const newItems: Item[] = [];
+      for (const f of accepted) {
+        if (f.type === "application/pdf") {
+          // Insert a placeholder while we split, then replace with per-page items.
+          const splittingId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const placeholder: Item = {
+            id: splittingId,
+            file: f,
+            fileName: f.name,
+            fileType: f.type,
+            fileSize: f.size,
+            stage: "splitting",
+            progress: 5,
+            message: "Splitting PDF pages…",
+          };
+          setItems((prev) => [placeholder, ...prev]);
+          try {
+            const { splitPdfToImages } = await import("@/lib/pdf-split");
+            const pages = await splitPdfToImages(f);
+            const expanded: Item[] = pages.map((p) => ({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              file: p.blob,
+              fileName: p.fileName,
+              fileType: "image/png",
+              fileSize: p.blob.size,
+              pageInfo: { page: p.pageNumber, total: p.totalPages },
+              stage: "queued",
+              progress: 0,
+            }));
+            setItems((prev) => {
+              const idx = prev.findIndex((it) => it.id === splittingId);
+              if (idx === -1) return [...expanded, ...prev];
+              return [...prev.slice(0, idx), ...expanded, ...prev.slice(idx + 1)];
+            });
+            expanded.forEach((it) => processOne(it));
+          } catch (err: any) {
+            toast.error(`Could not split ${f.name}: ${err?.message ?? "PDF read failed"}`);
+            setItems((prev) =>
+              prev.map((it) =>
+                it.id === splittingId
+                  ? { ...it, stage: "error", progress: 100, message: err?.message ?? "Split failed" }
+                  : it,
+              ),
+            );
+          }
+        } else {
+          newItems.push({
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            file: f,
+            fileName: f.name,
+            fileType: f.type,
+            fileSize: f.size,
+            stage: "queued",
+            progress: 0,
+          });
+        }
+      }
+      if (newItems.length) {
+        setItems((prev) => [...newItems, ...prev]);
+        newItems.forEach((it) => processOne(it));
+      }
     },
     [processOne],
   );
@@ -262,10 +318,10 @@ function ItemRow({ item }: { item: Item }) {
       ? FileCheck2
       : item.stage === "error"
       ? XCircle
-      : item.stage === "verifying" || item.stage === "ocr" || item.stage === "uploading" || item.stage === "hashing"
+      : item.stage === "verifying" || item.stage === "ocr" || item.stage === "uploading" || item.stage === "hashing" || item.stage === "splitting"
       ? Loader2
       : FileText;
-  const spinning = ["hashing", "uploading", "ocr", "verifying"].includes(item.stage);
+  const spinning = ["splitting", "hashing", "uploading", "ocr", "verifying"].includes(item.stage);
   const statusColor =
     item.result?.status === "valid"
       ? "bg-success/15 text-success border-success/30"
@@ -281,9 +337,14 @@ function ItemRow({ item }: { item: Item }) {
         <Icon className={`h-5 w-5 shrink-0 ${spinning ? "animate-spin text-primary" : item.stage === "done" ? "text-success" : item.stage === "error" ? "text-destructive" : "text-muted-foreground"}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-medium text-sm truncate">{item.file.name}</p>
+            <p className="font-medium text-sm truncate">{item.fileName}</p>
+            {item.pageInfo && (
+              <Badge variant="outline" className="text-[10px]">
+                Page {item.pageInfo.page}/{item.pageInfo.total}
+              </Badge>
+            )}
             <span className="text-xs text-muted-foreground">
-              {(item.file.size / 1024).toFixed(0)} KB
+              {(item.fileSize / 1024).toFixed(0)} KB
             </span>
             {item.result && (
               <Badge variant="outline" className={statusColor}>
@@ -333,6 +394,7 @@ function ItemRow({ item }: { item: Item }) {
 function stageLabel(s: Stage) {
   switch (s) {
     case "queued": return "Queued";
+    case "splitting": return "Splitting PDF pages…";
     case "hashing": return "Hashing file…";
     case "uploading": return "Uploading…";
     case "ocr": return "Extracting fields…";

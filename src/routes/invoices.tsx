@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import {
   Search, Download, Trash2, FileText, Loader2, Eye, ShieldAlert, ShieldCheck,
   RefreshCw, MoreHorizontal, FileSpreadsheet, FileDown, ChevronDown,
-  XCircle, AlertTriangle, Lightbulb, CheckCircle2,
+  XCircle, AlertTriangle, Lightbulb, CheckCircle2, Pencil, Save, X,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -333,7 +333,27 @@ function InvoicesPage() {
                         {r.fraud_risk && <RiskBadge risk={r.fraud_risk} />}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <StatusBadgeWithCounts status={r.status} issues={r.issues} />
+                        <div className="inline-flex items-center gap-2">
+                          <StatusBadgeWithCounts status={r.status} issues={r.issues} />
+                          {(r.status === "error" || isStuck(r)) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-xs"
+                              title={isStuck(r) ? "Stuck for >2 min — retry verification" : "Retry verification"}
+                              onClick={async () => {
+                                toast.info("Retrying…");
+                                const { error } = await supabase.functions.invoke("verify-gstin", {
+                                  body: { invoiceId: r.id },
+                                });
+                                if (error) toast.error(error.message);
+                                else { toast.success("Retried"); refresh(); }
+                              }}
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                            </Button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-1">
@@ -424,6 +444,13 @@ function StatusBadge({ status }: { status: Invoice["status"] }) {
   return <Badge variant="outline" className={map[status]}>{status}</Badge>;
 }
 
+// Treat invoices stuck >2 minutes in `processing` as retryable.
+function isStuck(r: Invoice): boolean {
+  if (r.status !== "processing") return false;
+  const age = Date.now() - new Date(r.created_at).getTime();
+  return age > 2 * 60 * 1000;
+}
+
 function RiskBadge({ risk }: { risk: "low" | "medium" | "high" }) {
   const map = {
     low: "bg-success/15 text-success border-success/30",
@@ -435,8 +462,14 @@ function RiskBadge({ risk }: { risk: "low" | "medium" | "high" }) {
 
 function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose: () => void }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [editingGstin, setEditingGstin] = useState(false);
+  const [gstinDraft, setGstinDraft] = useState("");
+  const [savingGstin, setSavingGstin] = useState(false);
+
   useEffect(() => {
     if (!invoice) { setSignedUrl(null); return; }
+    setEditingGstin(false);
+    setGstinDraft(invoice.gstin ?? "");
     (async () => {
       const { data } = await supabase.storage.from("invoices").createSignedUrl(invoice.file_path, 600);
       setSignedUrl(data?.signedUrl ?? null);
@@ -444,6 +477,32 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
   }, [invoice]);
 
   if (!invoice) return null;
+
+  const isPdf = (invoice.file_name ?? "").toLowerCase().endsWith(".pdf");
+
+  const saveAndReverify = async () => {
+    const next = gstinDraft.trim().toUpperCase();
+    if (!next) return toast.error("GSTIN cannot be empty");
+    setSavingGstin(true);
+    try {
+      const { error: upErr } = await supabase
+        .from("invoices")
+        .update({ gstin: next })
+        .eq("id", invoice.id);
+      if (upErr) throw upErr;
+      const { error: vErr } = await supabase.functions.invoke("verify-gstin", {
+        body: { invoiceId: invoice.id },
+      });
+      if (vErr) throw vErr;
+      toast.success("GSTIN updated and re-verified");
+      setEditingGstin(false);
+      onClose();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to re-verify");
+    } finally {
+      setSavingGstin(false);
+    }
+  };
 
   return (
     <Dialog open={!!invoice} onOpenChange={(o) => !o && onClose()}>
@@ -453,7 +512,39 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
             {invoice.gstin_verified ? <ShieldCheck className="h-5 w-5 text-success" /> : <ShieldAlert className="h-5 w-5 text-warning" />}
             {invoice.seller_name ?? invoice.file_name}
           </DialogTitle>
-          <DialogDescription className="font-mono">{invoice.gstin ?? "No GSTIN"}</DialogDescription>
+          <DialogDescription>
+            {editingGstin ? (
+              <div className="flex items-center gap-2 mt-1">
+                <Input
+                  value={gstinDraft}
+                  onChange={(e) => setGstinDraft(e.target.value.toUpperCase())}
+                  maxLength={15}
+                  placeholder="29ABCDE1234F1Z5"
+                  className="h-8 font-mono text-xs max-w-[200px]"
+                  disabled={savingGstin}
+                />
+                <Button size="sm" variant="default" onClick={saveAndReverify} disabled={savingGstin}>
+                  {savingGstin ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3 mr-1" />}
+                  Save & re-verify
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingGstin(false)} disabled={savingGstin}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : (
+              <span className="inline-flex items-center gap-2 font-mono">
+                {invoice.gstin ?? "No GSTIN"}
+                <button
+                  type="button"
+                  onClick={() => setEditingGstin(true)}
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-sans"
+                  title="Edit GSTIN and re-verify"
+                >
+                  <Pencil className="h-3 w-3" /> Edit
+                </button>
+              </span>
+            )}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
@@ -475,7 +566,7 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
               {invoice.gstin_trade_name && <p className="text-xs text-muted-foreground">Trade: {invoice.gstin_trade_name}</p>}
               <div className="flex gap-2 mt-2 flex-wrap">
                 {invoice.gstin_status && <Badge variant="outline">{invoice.gstin_status}</Badge>}
-                {invoice.gstin_source && <Badge variant="outline" className="text-xs">via {invoice.gstin_source}</Badge>}
+                <SourceBadge source={invoice.gstin_source} verified={invoice.gstin_verified} />
               </div>
             </div>
 
@@ -504,7 +595,7 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
 
           <div className="rounded-lg border border-border bg-muted/20 overflow-hidden min-h-[400px]">
             {signedUrl ? (
-              signedUrl.toLowerCase().includes(".pdf") ? (
+              isPdf ? (
                 <iframe src={signedUrl} className="w-full h-full min-h-[500px]" title="Invoice" />
               ) : (
                 <img src={signedUrl} alt="Invoice" className="w-full h-auto" />
@@ -519,6 +610,27 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
       </DialogContent>
     </Dialog>
   );
+}
+
+// Renders a friendly label for the GSTIN verification source. Never shows "via none".
+function SourceBadge({ source, verified }: { source: string | null; verified: boolean | null }) {
+  if (!source) {
+    return verified
+      ? <Badge variant="outline" className="text-xs border-success/30 text-success">Verified</Badge>
+      : <Badge variant="outline" className="text-xs">Not verified</Badge>;
+  }
+  const map: Record<string, { label: string; className: string }> = {
+    cache: { label: "via cache", className: "border-success/30 text-success" },
+    api: { label: "via GST API", className: "border-success/30 text-success" },
+    fallback: { label: "via fallback DB", className: "border-warning/30 text-warning" },
+    failed: { label: "Verification failed", className: "border-destructive/30 text-destructive" },
+    unverified: { label: "Not in registry", className: "border-warning/30 text-warning" },
+    invalid_format: { label: "Invalid GSTIN format", className: "border-destructive/30 text-destructive" },
+    missing: { label: "GSTIN missing", className: "border-destructive/30 text-destructive" },
+    none: { label: verified ? "Verified" : "Not verified", className: "" }, // legacy data safeguard
+  };
+  const cfg = map[source] ?? { label: source, className: "" };
+  return <Badge variant="outline" className={`text-xs ${cfg.className}`}>{cfg.label}</Badge>;
 }
 
 function Field({ label, value, mono, small }: { label: string; value: string | null; mono?: boolean; small?: boolean }) {
