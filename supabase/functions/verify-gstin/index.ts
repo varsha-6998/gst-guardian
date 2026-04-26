@@ -148,7 +148,7 @@ interface GstinResult {
   legal_name: string | null;
   trade_name: string | null;
   status: string | null;
-  source: "cache" | "api" | "fallback" | "none";
+  source: "cache" | "api" | "fallback" | "failed" | "missing" | "invalid_format" | "unverified";
 }
 
 async function verifyGstin(
