@@ -318,10 +318,10 @@ function ItemRow({ item }: { item: Item }) {
       ? FileCheck2
       : item.stage === "error"
       ? XCircle
-      : item.stage === "verifying" || item.stage === "ocr" || item.stage === "uploading" || item.stage === "hashing"
+      : item.stage === "verifying" || item.stage === "ocr" || item.stage === "uploading" || item.stage === "hashing" || item.stage === "splitting"
       ? Loader2
       : FileText;
-  const spinning = ["hashing", "uploading", "ocr", "verifying"].includes(item.stage);
+  const spinning = ["splitting", "hashing", "uploading", "ocr", "verifying"].includes(item.stage);
   const statusColor =
     item.result?.status === "valid"
       ? "bg-success/15 text-success border-success/30"
@@ -337,9 +337,14 @@ function ItemRow({ item }: { item: Item }) {
         <Icon className={`h-5 w-5 shrink-0 ${spinning ? "animate-spin text-primary" : item.stage === "done" ? "text-success" : item.stage === "error" ? "text-destructive" : "text-muted-foreground"}`} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-medium text-sm truncate">{item.file.name}</p>
+            <p className="font-medium text-sm truncate">{item.fileName}</p>
+            {item.pageInfo && (
+              <Badge variant="outline" className="text-[10px]">
+                Page {item.pageInfo.page}/{item.pageInfo.total}
+              </Badge>
+            )}
             <span className="text-xs text-muted-foreground">
-              {(item.file.size / 1024).toFixed(0)} KB
+              {(item.fileSize / 1024).toFixed(0)} KB
             </span>
             {item.result && (
               <Badge variant="outline" className={statusColor}>
