@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import {
   Search, Download, Trash2, FileText, Loader2, Eye, ShieldAlert, ShieldCheck,
   RefreshCw, MoreHorizontal, FileSpreadsheet, FileDown, ChevronDown,
-  XCircle, AlertTriangle, Lightbulb, CheckCircle2,
+  XCircle, AlertTriangle, Lightbulb, CheckCircle2, Pencil, Save, X,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
