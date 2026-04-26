@@ -394,6 +394,7 @@ function ItemRow({ item }: { item: Item }) {
 function stageLabel(s: Stage) {
   switch (s) {
     case "queued": return "Queued";
+    case "splitting": return "Splitting PDF pages…";
     case "hashing": return "Hashing file…";
     case "uploading": return "Uploading…";
     case "ocr": return "Extracting fields…";
