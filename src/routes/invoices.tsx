@@ -569,16 +569,72 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
           <div className="space-y-4">
-            <Field label="Invoice number" value={invoice.invoice_number} />
-            <Field label="Invoice date" value={invoice.invoice_date} />
-            <Field label="Buyer" value={invoice.buyer_name} />
-            <Field label="Taxable amount" value={invoice.taxable_amount != null ? `₹${Number(invoice.taxable_amount).toLocaleString("en-IN")}` : null} mono />
+            <EditableField
+              label="Invoice number"
+              value={invoice.invoice_number}
+              onSave={(v) => saveField("invoice_number", v, "text")}
+            />
+            <EditableField
+              label="Invoice date"
+              value={invoice.invoice_date}
+              type="date"
+              onSave={(v) => saveField("invoice_date", v, "date")}
+            />
+            <EditableField
+              label="Seller name"
+              value={invoice.seller_name}
+              onSave={(v) => saveField("seller_name", v, "text")}
+            />
+            <EditableField
+              label="Buyer name"
+              value={invoice.buyer_name}
+              onSave={(v) => saveField("buyer_name", v, "text")}
+            />
+            <EditableField
+              label="Taxable amount"
+              value={invoice.taxable_amount != null ? String(invoice.taxable_amount) : null}
+              type="number"
+              prefix="₹"
+              mono
+              onSave={(v) => saveField("taxable_amount", v, "number")}
+            />
             <div className="grid grid-cols-3 gap-2">
-              <Field label="CGST" value={invoice.cgst != null ? `₹${invoice.cgst}` : null} mono small />
-              <Field label="SGST" value={invoice.sgst != null ? `₹${invoice.sgst}` : null} mono small />
-              <Field label="IGST" value={invoice.igst != null ? `₹${invoice.igst}` : null} mono small />
+              <EditableField
+                label="CGST"
+                value={invoice.cgst != null ? String(invoice.cgst) : null}
+                type="number"
+                prefix="₹"
+                mono
+                small
+                onSave={(v) => saveField("cgst", v, "number")}
+              />
+              <EditableField
+                label="SGST"
+                value={invoice.sgst != null ? String(invoice.sgst) : null}
+                type="number"
+                prefix="₹"
+                mono
+                small
+                onSave={(v) => saveField("sgst", v, "number")}
+              />
+              <EditableField
+                label="IGST"
+                value={invoice.igst != null ? String(invoice.igst) : null}
+                type="number"
+                prefix="₹"
+                mono
+                small
+                onSave={(v) => saveField("igst", v, "number")}
+              />
             </div>
-            <Field label="Total" value={invoice.total_amount != null ? `₹${Number(invoice.total_amount).toLocaleString("en-IN")}` : null} mono />
+            <EditableField
+              label="Total"
+              value={invoice.total_amount != null ? String(invoice.total_amount) : null}
+              type="number"
+              prefix="₹"
+              mono
+              onSave={(v) => saveField("total_amount", v, "number")}
+            />
 
             <div className="rounded-lg border border-border p-3">
               <p className="text-xs uppercase text-muted-foreground tracking-wider mb-2">GSTIN Verification</p>
