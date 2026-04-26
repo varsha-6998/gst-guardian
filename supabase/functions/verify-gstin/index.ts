@@ -53,13 +53,14 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const apiEnabled = setting?.value === true || setting?.value === "true" || setting === null;
 
+    // Default source reflects WHY we couldn't verify — never the literal "none".
     let gstinResult: GstinResult = {
       gstin,
       verified: false,
       legal_name: null,
       trade_name: null,
       status: null,
-      source: "none",
+      source: !gstin ? "missing" : (!GSTIN_REGEX.test(gstin) ? "invalid_format" : "failed"),
     };
 
     if (gstin && GSTIN_REGEX.test(gstin)) {
@@ -67,18 +68,40 @@ Deno.serve(async (req) => {
     }
 
     // Compliance + fraud scoring
-    const { score: complianceScore, items, issues, suggestions } = scoreCompliance(invoice, gstinResult);
-    const { fraudScore, fraudRisk, fraudReasons } = await detectFraud(admin, invoice, gstinResult, userId);
+    const { items, issues, suggestions } = scoreCompliance(invoice, gstinResult);
+    const { fraudReasons } = await detectFraud(admin, invoice, gstinResult, userId);
 
     const errors = items.filter((i) => i.severity === "error");
     const warnings = items.filter((i) => i.severity === "warning");
 
-    let status: "valid" | "warning" | "error" = "valid";
-    if (errors.length > 0 || fraudRisk === "high" || gstinResult.status === "Cancelled") {
-      status = "error";
-    } else if (warnings.length > 0 || fraudRisk === "medium" || !gstinResult.verified) {
-      status = "warning";
+    // Unified scoring (per spec): start at 100, -20 per error, -10 per warning,
+    // -5 if GSTIN API was attempted but didn't yield a verified result.
+    let complianceScore = 100;
+    complianceScore -= errors.length * 20;
+    complianceScore -= warnings.length * 10;
+    if (gstin && GSTIN_REGEX.test(gstin) && !gstinResult.verified && gstinResult.source !== "cache") {
+      complianceScore -= 5;
     }
+    complianceScore = Math.max(0, Math.min(100, complianceScore));
+
+    // Score → fraud risk → status (consistent mapping, no contradictions).
+    const fraudRisk: "low" | "medium" | "high" =
+      complianceScore >= 90 ? "low" : complianceScore >= 70 ? "medium" : "high";
+    // Cancelled / Suspended GSTIN always escalates fraud regardless of score.
+    const escalatedFraudRisk: "low" | "medium" | "high" =
+      gstinResult.status === "Cancelled" || gstinResult.status === "Suspended"
+        ? "high"
+        : fraudRisk;
+
+    const status: "valid" | "warning" | "error" =
+      complianceScore >= 90 && escalatedFraudRisk === "low"
+        ? "valid"
+        : complianceScore >= 70 && escalatedFraudRisk !== "high"
+          ? "warning"
+          : "error";
+
+    const fraudScore =
+      escalatedFraudRisk === "high" ? 80 : escalatedFraudRisk === "medium" ? 50 : 15;
 
     await admin
       .from("invoices")
