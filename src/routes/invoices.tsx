@@ -333,7 +333,27 @@ function InvoicesPage() {
                         {r.fraud_risk && <RiskBadge risk={r.fraud_risk} />}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <StatusBadgeWithCounts status={r.status} issues={r.issues} />
+                        <div className="inline-flex items-center gap-2">
+                          <StatusBadgeWithCounts status={r.status} issues={r.issues} />
+                          {(r.status === "error" || isStuck(r)) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 px-2 text-xs"
+                              title={isStuck(r) ? "Stuck for >2 min — retry verification" : "Retry verification"}
+                              onClick={async () => {
+                                toast.info("Retrying…");
+                                const { error } = await supabase.functions.invoke("verify-gstin", {
+                                  body: { invoiceId: r.id },
+                                });
+                                if (error) toast.error(error.message);
+                                else { toast.success("Retried"); refresh(); }
+                              }}
+                            >
+                              <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                            </Button>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-1">
