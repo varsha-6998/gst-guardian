@@ -718,6 +718,108 @@ function Field({ label, value, mono, small }: { label: string; value: string | n
   );
 }
 
+// Inline-editable field used in the invoice details panel.
+// Click pencil → edit input → Save (persists to DB and triggers re-verification via onSave).
+function EditableField({
+  label,
+  value,
+  onSave,
+  type = "text",
+  prefix,
+  mono,
+  small,
+}: {
+  label: string;
+  value: string | null;
+  onSave: (next: string) => Promise<void>;
+  type?: "text" | "number" | "date";
+  prefix?: string;
+  mono?: boolean;
+  small?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setDraft(value ?? "");
+  }, [value]);
+
+  const display = (() => {
+    if (value == null || value === "") return "—";
+    if (type === "number" && prefix) {
+      const n = Number(value);
+      return Number.isFinite(n) ? `${prefix}${n.toLocaleString("en-IN")}` : `${prefix}${value}`;
+    }
+    return value;
+  })();
+
+  const commit = async () => {
+    setSaving(true);
+    try {
+      await onSave(draft);
+      toast.success(`${label} updated`);
+      setEditing(false);
+    } catch (e: any) {
+      toast.error(e?.message ?? `Failed to update ${label}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    setDraft(value ?? "");
+    setEditing(false);
+  };
+
+  return (
+    <div className="group">
+      <p className="text-xs uppercase text-muted-foreground tracking-wider flex items-center gap-2">
+        {label}
+        {!editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-primary hover:underline inline-flex items-center gap-1 normal-case"
+            title={`Edit ${label}`}
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        )}
+      </p>
+      {editing ? (
+        <div className="flex items-center gap-1 mt-1">
+          <Input
+            type={type}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            disabled={saving}
+            className={`h-8 ${mono ? "font-mono" : ""} ${small ? "text-xs" : "text-sm"}`}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") cancel();
+            }}
+          />
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={commit} disabled={saving} title="Save & re-verify">
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={cancel} disabled={saving} title="Cancel">
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      ) : (
+        <p
+          className={`${mono ? "font-mono" : ""} ${small ? "text-sm" : "text-base"} font-medium mt-0.5 cursor-text`}
+          onClick={() => setEditing(true)}
+        >
+          {display}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ---------- Validation breakdown ----------
 
 // Human-readable explanations + fix tips for known issue keywords.
