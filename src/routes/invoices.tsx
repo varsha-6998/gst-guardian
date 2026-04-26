@@ -480,20 +480,40 @@ function InvoiceDetail({ invoice, onClose }: { invoice: Invoice | null; onClose:
 
   const isPdf = (invoice.file_name ?? "").toLowerCase().endsWith(".pdf");
 
+  // Update a single field on the invoice. Numbers are coerced; empty strings become null.
+  // After saving, kick off re-verification so compliance score / fraud risk / status stay consistent.
+  const saveField = async (
+    field: keyof Invoice,
+    raw: string,
+    kind: "text" | "number" | "date",
+  ) => {
+    let value: string | number | null = raw.trim() === "" ? null : raw.trim();
+    if (value !== null && kind === "number") {
+      const n = Number(value);
+      if (Number.isNaN(n)) throw new Error("Must be a number");
+      value = n;
+    }
+    if (value !== null && kind === "date") {
+      // Expect YYYY-MM-DD from <input type="date">
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw new Error("Invalid date");
+    }
+    const { error: upErr } = await supabase
+      .from("invoices")
+      .update({ [field]: value } as any)
+      .eq("id", invoice.id);
+    if (upErr) throw upErr;
+    const { error: vErr } = await supabase.functions.invoke("verify-gstin", {
+      body: { invoiceId: invoice.id },
+    });
+    if (vErr) throw vErr;
+  };
+
   const saveAndReverify = async () => {
     const next = gstinDraft.trim().toUpperCase();
     if (!next) return toast.error("GSTIN cannot be empty");
     setSavingGstin(true);
     try {
-      const { error: upErr } = await supabase
-        .from("invoices")
-        .update({ gstin: next })
-        .eq("id", invoice.id);
-      if (upErr) throw upErr;
-      const { error: vErr } = await supabase.functions.invoke("verify-gstin", {
-        body: { invoiceId: invoice.id },
-      });
-      if (vErr) throw vErr;
+      await saveField("gstin", next, "text");
       toast.success("GSTIN updated and re-verified");
       setEditingGstin(false);
       onClose();
