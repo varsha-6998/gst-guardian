@@ -19,11 +19,15 @@ export const Route = createFileRoute("/upload")({
   ),
 });
 
-type Stage = "queued" | "hashing" | "uploading" | "ocr" | "verifying" | "done" | "error";
+type Stage = "queued" | "splitting" | "hashing" | "uploading" | "ocr" | "verifying" | "done" | "error";
 
 interface Item {
   id: string;
-  file: File;
+  file: File | Blob;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  pageInfo?: { page: number; total: number };
   stage: Stage;
   progress: number;
   message?: string;
