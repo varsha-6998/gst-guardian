@@ -243,7 +243,7 @@ async function verifyGstin(
     };
   }
 
-  return { gstin, verified: false, legal_name: null, trade_name: null, status: null, source: "none" };
+  return { gstin, verified: false, legal_name: null, trade_name: null, status: null, source: "unverified" };
 }
 
 interface ValidationItem {
