@@ -28,7 +28,7 @@ export async function splitPdfToImages(file: File, scale = 2): Promise<PdfPage[]
     canvas.height = viewport.height;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas 2D context unavailable");
-    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+    await page.render({ canvasContext: ctx, viewport } as any).promise;
     const blob: Blob = await new Promise((resolve, reject) =>
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png", 0.92),
     );
