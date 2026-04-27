@@ -177,7 +177,7 @@
 }
 
 @layer utilities {
-  .bg-gradient-primary { background: var(--gradient-primary); }
+  .bg-gradient-primary { background-image: var(--gradient-primary); }
   .bg-gradient-hero { background: var(--gradient-hero); }
   .bg-gradient-card { background: var(--gradient-card); }
   .shadow-glow { box-shadow: var(--shadow-glow); }
