@@ -46,6 +46,12 @@ export const Route = createRootRoute({
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Invoice IQ — AI-Powered GST Compliance Assistant" },
+      { name: "description", content: "GST Guardian is an AI-powered web app for MSMEs to upload, process, and validate GST invoices." },
+      { property: "og:description", content: "GST Guardian is an AI-powered web app for MSMEs to upload, process, and validate GST invoices." },
+      { name: "twitter:description", content: "GST Guardian is an AI-powered web app for MSMEs to upload, process, and validate GST invoices." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7532cc9a-e874-4293-9a10-fa5e61f40bb8/id-preview-a74135d1--ab845009-7d02-4be6-9081-b5126a90e024.lovable.app-1777295325077.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/7532cc9a-e874-4293-9a10-fa5e61f40bb8/id-preview-a74135d1--ab845009-7d02-4be6-9081-b5126a90e024.lovable.app-1777295325077.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
