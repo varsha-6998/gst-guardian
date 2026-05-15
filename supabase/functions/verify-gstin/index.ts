@@ -455,6 +455,25 @@ async function detectFraud(admin: any, invoice: any, gstin: GstinResult, userId:
     }
   }
 
+  // Amount tampering: taxable + taxes != stated total
+  const taxable = Number(invoice.taxable_amount ?? 0);
+  const cgstV = Number(invoice.cgst ?? 0);
+  const sgstV = Number(invoice.sgst ?? 0);
+  const igstV = Number(invoice.igst ?? 0);
+  const totalV = Number(invoice.total_amount ?? 0);
+  const taxes = cgstV + sgstV + igstV;
+  if (taxable > 0 && totalV > 0) {
+    const computed = taxable + taxes;
+    const diff = Math.abs(computed - totalV);
+    const tolerance = Math.max(1, totalV * 0.02);
+    if (diff > tolerance * 5) {
+      reasons.push(
+        `Possible amount manipulation: computed ₹${computed.toFixed(2)} vs stated ₹${totalV.toFixed(2)} (diff ₹${diff.toFixed(2)})`,
+      );
+      fraudScore += 25;
+    }
+  }
+
   // Duplicate by hash
   if (invoice.file_hash) {
     const { count } = await admin
@@ -464,34 +483,67 @@ async function detectFraud(admin: any, invoice: any, gstin: GstinResult, userId:
       .eq("file_hash", invoice.file_hash)
       .neq("id", invoice.id);
     if ((count ?? 0) > 0) {
-      reasons.push("Duplicate invoice file detected");
+      reasons.push("Duplicate invoice file detected (identical hash)");
       fraudScore += 30;
     }
   }
 
-  // Duplicate invoice number with same GSTIN
+  // Duplicate invoice number with same GSTIN — flag harder when totals differ
   if (invoice.invoice_number && invoice.gstin) {
-    const { count } = await admin
+    const { data: dups } = await admin
       .from("invoices")
-      .select("id", { count: "exact", head: true })
+      .select("id, total_amount")
       .eq("user_id", userId)
       .eq("invoice_number", invoice.invoice_number)
       .eq("gstin", invoice.gstin)
       .neq("id", invoice.id);
-    if ((count ?? 0) > 0) {
-      reasons.push("Duplicate invoice number for same seller");
-      fraudScore += 25;
+    if (dups && dups.length > 0) {
+      const differing = dups.find(
+        (d: any) => Number(d.total_amount ?? 0) > 0 && totalV > 0 &&
+          Math.abs(Number(d.total_amount) - totalV) > Math.max(1, totalV * 0.01),
+      );
+      if (differing) {
+        reasons.push("Same invoice number for same seller with different amount — likely tampered");
+        fraudScore += 35;
+      } else {
+        reasons.push("Duplicate invoice number for same seller");
+        fraudScore += 25;
+      }
     }
   }
 
-  // Abnormal tax rate
-  const taxable = Number(invoice.taxable_amount ?? 0);
-  const taxes = Number(invoice.cgst ?? 0) + Number(invoice.sgst ?? 0) + Number(invoice.igst ?? 0);
-  if (taxable > 0) {
+  // Vendor name drift: same GSTIN previously seen under a different seller name
+  if (invoice.gstin && invoice.seller_name) {
+    const { data: prior } = await admin
+      .from("invoices")
+      .select("seller_name")
+      .eq("user_id", userId)
+      .eq("gstin", invoice.gstin)
+      .neq("id", invoice.id)
+      .not("seller_name", "is", null)
+      .limit(20);
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const cur = norm(invoice.seller_name);
+    const drift = (prior ?? []).some(
+      (r: any) => r.seller_name && norm(r.seller_name) && norm(r.seller_name) !== cur,
+    );
+    if (drift) {
+      reasons.push("Same GSTIN previously used under a different seller name");
+      fraudScore += 15;
+    }
+  }
+
+  // Tax rate sanity (standard GST slabs: 0, 5, 12, 18, 28)
+  if (taxable > 0 && taxes > 0) {
     const rate = (taxes / taxable) * 100;
+    const standard = [0, 5, 12, 18, 28];
+    const nearest = standard.reduce((p, c) => (Math.abs(c - rate) < Math.abs(p - rate) ? c : p));
     if (rate > 35 || (rate > 0 && rate < 0.5)) {
       reasons.push(`Unusual effective tax rate: ${rate.toFixed(1)}%`);
       fraudScore += 15;
+    } else if (Math.abs(nearest - rate) > 1.5) {
+      reasons.push(`Non-standard GST rate ${rate.toFixed(1)}% (closest slab ${nearest}%)`);
+      fraudScore += 10;
     }
   }
 
