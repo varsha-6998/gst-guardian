@@ -38,6 +38,7 @@ export const Route = createRootRoute({
           "Upload invoices, extract data with AI OCR, verify GSTINs, detect fraud, and ensure GST compliance for your MSME.",
       },
       { name: "author", content: "Invoice IQ" },
+      { name: "google-site-verification", content: "r8VB30xzlCDW-sBdYmmlPf93FYS44407J4zwI8GNaWo" },
       { property: "og:title", content: "Invoice IQ — AI-Powered GST Compliance Assistant" },
       {
         property: "og:description",

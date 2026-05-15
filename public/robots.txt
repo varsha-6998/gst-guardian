@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://invoice-smart-guardian.lovable.app/sitemap.xml
