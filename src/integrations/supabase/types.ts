@@ -281,6 +281,54 @@ export type Database = {
         }
         Relationships: []
       }
+      vendors: {
+        Row: {
+          created_at: string
+          flagged_count: number
+          gstin: string
+          id: string
+          last_seen_at: string | null
+          last_seller_name: string | null
+          legal_name: string | null
+          risk_level: Database["public"]["Enums"]["vendor_risk"]
+          total_amount: number
+          total_invoices: number
+          trade_name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          flagged_count?: number
+          gstin: string
+          id?: string
+          last_seen_at?: string | null
+          last_seller_name?: string | null
+          legal_name?: string | null
+          risk_level?: Database["public"]["Enums"]["vendor_risk"]
+          total_amount?: number
+          total_invoices?: number
+          trade_name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          flagged_count?: number
+          gstin?: string
+          id?: string
+          last_seen_at?: string | null
+          last_seller_name?: string | null
+          legal_name?: string | null
+          risk_level?: Database["public"]["Enums"]["vendor_risk"]
+          total_amount?: number
+          total_invoices?: number
+          trade_name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -293,11 +341,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      recompute_vendor: {
+        Args: { _gstin: string; _user: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "user"
       fraud_risk: "low" | "medium" | "high"
       invoice_status: "processing" | "valid" | "warning" | "error"
+      vendor_risk: "low" | "medium" | "high"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -428,6 +481,7 @@ export const Constants = {
       app_role: ["admin", "user"],
       fraud_risk: ["low", "medium", "high"],
       invoice_status: ["processing", "valid", "warning", "error"],
+      vendor_risk: ["low", "medium", "high"],
     },
   },
 } as const
