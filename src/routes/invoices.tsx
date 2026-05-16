@@ -77,7 +77,11 @@ function InvoicesPage() {
   const filtered = useMemo(() => {
     if (!rows) return [];
     return rows.filter((r) => {
-      if (filter !== "all" && r.status !== filter) return false;
+      if (filter === "high_risk") {
+        if (r.fraud_risk !== "high") return false;
+      } else if (filter !== "all" && r.status !== filter) {
+        return false;
+      }
       if (q) {
         const s = q.toLowerCase();
         return (
