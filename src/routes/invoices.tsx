@@ -43,7 +43,7 @@ function InvoicesPage() {
   const { user } = useAuth();
   const [rows, setRows] = useState<Invoice[] | null>(null);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "valid" | "warning" | "error">("all");
+  const [filter, setFilter] = useState<"all" | "valid" | "warning" | "error" | "high_risk">("all");
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -77,7 +77,11 @@ function InvoicesPage() {
   const filtered = useMemo(() => {
     if (!rows) return [];
     return rows.filter((r) => {
-      if (filter !== "all" && r.status !== filter) return false;
+      if (filter === "high_risk") {
+        if (r.fraud_risk !== "high") return false;
+      } else if (filter !== "all" && r.status !== filter) {
+        return false;
+      }
       if (q) {
         const s = q.toLowerCase();
         return (
@@ -226,8 +230,8 @@ function InvoicesPage() {
           <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search seller, GSTIN, invoice number…" className="pl-9" />
         </div>
-        <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
-          {(["all", "valid", "warning", "error"] as const).map((f) => (
+        <div className="flex gap-1 rounded-lg border border-border bg-card p-1 flex-wrap">
+          {(["all", "valid", "warning", "error", "high_risk"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -235,7 +239,7 @@ function InvoicesPage() {
                 filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {f}
+              {f === "high_risk" ? "High risk" : f}
             </button>
           ))}
         </div>

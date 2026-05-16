@@ -12,12 +12,14 @@ import {
   Settings,
   LogOut,
   Loader2,
+  Building2,
 } from "lucide-react";
 
 const baseNav = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/upload", label: "Upload", icon: Upload },
   { to: "/invoices", label: "Invoices", icon: FileText },
+  { to: "/vendors", label: "Vendors", icon: Building2 },
 ];
 
 const adminNav = [{ to: "/admin", label: "Admin", icon: ShieldCheck }];
