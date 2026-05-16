@@ -43,7 +43,7 @@ function InvoicesPage() {
   const { user } = useAuth();
   const [rows, setRows] = useState<Invoice[] | null>(null);
   const [q, setQ] = useState("");
-  const [filter, setFilter] = useState<"all" | "valid" | "warning" | "error">("all");
+  const [filter, setFilter] = useState<"all" | "valid" | "warning" | "error" | "high_risk">("all");
   const [selected, setSelected] = useState<Invoice | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
