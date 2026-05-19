@@ -215,7 +215,7 @@ function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="rounded-2xl border border-border bg-gradient-card p-5 shadow-card">
             <p className="text-xs uppercase tracking-wider text-muted-foreground">Avg compliance score</p>
             <p className="font-mono text-4xl font-bold mt-2 text-primary">{avgCompliance}<span className="text-base text-muted-foreground">/100</span></p>
@@ -224,7 +224,57 @@ function DashboardPage() {
             <p className="text-xs uppercase tracking-wider text-muted-foreground">Total invoice value</p>
             <p className="font-mono text-4xl font-bold mt-2">₹{totalValue.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
           </div>
+          <div className="rounded-2xl border border-border bg-gradient-card p-5 shadow-card">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">GST collected</p>
+            <p className="font-mono text-4xl font-bold mt-2 text-success">₹{gstCollected.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
+          </div>
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className="rounded-2xl border border-border bg-gradient-card p-5 shadow-card">
+            <h3 className="font-semibold mb-4">Monthly trend — invoices & GST</h3>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={months}>
+                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" stroke="var(--muted-foreground)" fontSize={12} />
+                  <YAxis yAxisId="left" stroke="var(--muted-foreground)" fontSize={12} allowDecimals={false} />
+                  <YAxis yAxisId="right" orientation="right" stroke="var(--muted-foreground)" fontSize={12} />
+                  <Tooltip
+                    contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
+                    formatter={(v: any, n: string) => n === "GST" ? [`₹${Number(v).toLocaleString("en-IN")}`, n] : [v, n]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="count" name="Invoices" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="right" type="monotone" dataKey="gst" name="GST" stroke="var(--success)" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-gradient-card p-5 shadow-card">
+            <h3 className="font-semibold mb-4">Top risky vendors</h3>
+            {topRisky.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-12 text-center">No flagged vendors 🎉</p>
+            ) : (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topRisky} layout="vertical" margin={{ left: 10 }}>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" stroke="var(--muted-foreground)" fontSize={12} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" stroke="var(--muted-foreground)" fontSize={11} width={110} />
+                    <Tooltip
+                      contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
+                      cursor={{ fill: "var(--muted)" }}
+                    />
+                    <Bar dataKey="flagged" name="Flagged invoices" fill="var(--destructive)" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </div>
+
 
         {total === 0 ? (
           <div className="rounded-3xl border border-dashed border-border bg-gradient-card p-10 md:p-16 text-center shadow-card">
