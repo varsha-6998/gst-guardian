@@ -88,6 +88,10 @@ function DashboardPage() {
     ? Math.round(rows.reduce((s, r) => s + (r.compliance_score ?? 0), 0) / total)
     : 0;
   const totalValue = rows.reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+  const gstCollected = rows.reduce(
+    (s, r) => s + Number(r.cgst ?? 0) + Number(r.sgst ?? 0) + Number(r.igst ?? 0),
+    0,
+  );
 
   // Status pie data
   const statusData = [
@@ -109,6 +113,42 @@ function DashboardPage() {
     const d = days.find((x) => x.date === iso);
     if (d) d.count++;
   });
+
+  // MoM trend (last 6 months: invoice count + GST collected)
+  const months: { key: string; label: string; count: number; gst: number }[] = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: d.toLocaleDateString("en-IN", { month: "short" }),
+      count: 0,
+      gst: 0,
+    });
+  }
+  rows.forEach((r) => {
+    const k = r.created_at.slice(0, 7);
+    const m = months.find((x) => x.key === k);
+    if (m) {
+      m.count++;
+      m.gst += Number(r.cgst ?? 0) + Number(r.sgst ?? 0) + Number(r.igst ?? 0);
+    }
+  });
+
+  // Top risky vendors (by flagged count, top 5)
+  const vendorMap = new Map<string, { name: string; flagged: number; total: number }>();
+  rows.forEach((r) => {
+    const key = r.gstin ?? r.seller_name ?? "Unknown";
+    const v = vendorMap.get(key) ?? { name: r.seller_name ?? key, flagged: 0, total: 0 };
+    v.total++;
+    if (r.status === "error" || r.fraud_risk === "high") v.flagged++;
+    vendorMap.set(key, v);
+  });
+  const topRisky = Array.from(vendorMap.values())
+    .filter((v) => v.flagged > 0)
+    .sort((a, b) => b.flagged - a.flagged)
+    .slice(0, 5)
+    .map((v) => ({ name: v.name.length > 18 ? v.name.slice(0, 18) + "…" : v.name, flagged: v.flagged }));
 
   return (
     <AppShell>
