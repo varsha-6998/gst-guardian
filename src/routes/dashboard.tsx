@@ -25,6 +25,10 @@ interface InvoiceRow {
   fraud_risk: "low" | "medium" | "high" | null;
   compliance_score: number | null;
   total_amount: number | null;
+  cgst: number | null;
+  sgst: number | null;
+  igst: number | null;
+  gstin: string | null;
   seller_name: string | null;
   invoice_number: string | null;
   created_at: string;
