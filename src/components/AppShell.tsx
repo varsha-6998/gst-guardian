@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { Logo } from "./Logo";
 import { Button } from "./ui/button";
-import { AlertsBell } from "./AlertsBell";
 import { useAuth } from "@/lib/auth-context";
 import {
   LayoutDashboard,
@@ -79,14 +78,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <Settings className="h-4 w-4" /> Settings
           </Link>
-          <div className="px-3 py-2 mt-2 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-              <p className="text-[10px] uppercase tracking-wider text-primary mt-0.5">
-                {role ?? "user"}
-              </p>
-            </div>
-            <AlertsBell />
+          <div className="px-3 py-2 mt-2">
+            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            <p className="text-[10px] uppercase tracking-wider text-primary mt-0.5">
+              {role ?? "user"}
+            </p>
           </div>
           <Button
             variant="ghost"
@@ -102,12 +98,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Mobile top bar */}
       <div className="md:hidden fixed top-0 inset-x-0 z-30 h-14 border-b border-border bg-background/90 backdrop-blur-xl flex items-center justify-between px-4">
         <Logo size="sm" />
-        <div className="flex items-center gap-1">
-          <AlertsBell />
-          <Button variant="ghost" size="sm" onClick={signOut}>
-            <LogOut className="h-4 w-4" />
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={signOut}>
+          <LogOut className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Main */}
