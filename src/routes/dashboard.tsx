@@ -242,7 +242,7 @@ function DashboardPage() {
                   <YAxis yAxisId="right" orientation="right" stroke="var(--muted-foreground)" fontSize={12} />
                   <Tooltip
                     contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
-                    formatter={(v: any, n: string) => n === "GST" ? [`₹${Number(v).toLocaleString("en-IN")}`, n] : [v, n]}
+                    formatter={(v: any, n: any) => n === "GST" ? [`₹${Number(v).toLocaleString("en-IN")}`, n] : [v, n]}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line yAxisId="left" type="monotone" dataKey="count" name="Invoices" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3 }} />
