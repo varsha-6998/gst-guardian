@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, Legend,
+  LineChart, Line,
 } from "recharts";
 
 export const Route = createFileRoute("/dashboard")({
@@ -24,6 +25,10 @@ interface InvoiceRow {
   fraud_risk: "low" | "medium" | "high" | null;
   compliance_score: number | null;
   total_amount: number | null;
+  cgst: number | null;
+  sgst: number | null;
+  igst: number | null;
+  gstin: string | null;
   seller_name: string | null;
   invoice_number: string | null;
   created_at: string;
@@ -38,7 +43,7 @@ function DashboardPage() {
     const fetchRows = async () => {
       const { data } = await supabase
         .from("invoices")
-        .select("id, status, fraud_risk, compliance_score, total_amount, seller_name, invoice_number, created_at")
+        .select("id, status, fraud_risk, compliance_score, total_amount, cgst, sgst, igst, gstin, seller_name, invoice_number, created_at")
         .order("created_at", { ascending: false });
       setRows((data ?? []) as InvoiceRow[]);
     };
@@ -83,6 +88,10 @@ function DashboardPage() {
     ? Math.round(rows.reduce((s, r) => s + (r.compliance_score ?? 0), 0) / total)
     : 0;
   const totalValue = rows.reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+  const gstCollected = rows.reduce(
+    (s, r) => s + Number(r.cgst ?? 0) + Number(r.sgst ?? 0) + Number(r.igst ?? 0),
+    0,
+  );
 
   // Status pie data
   const statusData = [
@@ -104,6 +113,42 @@ function DashboardPage() {
     const d = days.find((x) => x.date === iso);
     if (d) d.count++;
   });
+
+  // MoM trend (last 6 months: invoice count + GST collected)
+  const months: { key: string; label: string; count: number; gst: number }[] = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
+      label: d.toLocaleDateString("en-IN", { month: "short" }),
+      count: 0,
+      gst: 0,
+    });
+  }
+  rows.forEach((r) => {
+    const k = r.created_at.slice(0, 7);
+    const m = months.find((x) => x.key === k);
+    if (m) {
+      m.count++;
+      m.gst += Number(r.cgst ?? 0) + Number(r.sgst ?? 0) + Number(r.igst ?? 0);
+    }
+  });
+
+  // Top risky vendors (by flagged count, top 5)
+  const vendorMap = new Map<string, { name: string; flagged: number; total: number }>();
+  rows.forEach((r) => {
+    const key = r.gstin ?? r.seller_name ?? "Unknown";
+    const v = vendorMap.get(key) ?? { name: r.seller_name ?? key, flagged: 0, total: 0 };
+    v.total++;
+    if (r.status === "error" || r.fraud_risk === "high") v.flagged++;
+    vendorMap.set(key, v);
+  });
+  const topRisky = Array.from(vendorMap.values())
+    .filter((v) => v.flagged > 0)
+    .sort((a, b) => b.flagged - a.flagged)
+    .slice(0, 5)
+    .map((v) => ({ name: v.name.length > 18 ? v.name.slice(0, 18) + "…" : v.name, flagged: v.flagged }));
 
   return (
     <AppShell>
@@ -170,7 +215,7 @@ function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="rounded-2xl border border-border bg-gradient-card p-5 shadow-card">
             <p className="text-xs uppercase tracking-wider text-muted-foreground">Avg compliance score</p>
             <p className="font-mono text-4xl font-bold mt-2 text-primary">{avgCompliance}<span className="text-base text-muted-foreground">/100</span></p>
@@ -179,7 +224,57 @@ function DashboardPage() {
             <p className="text-xs uppercase tracking-wider text-muted-foreground">Total invoice value</p>
             <p className="font-mono text-4xl font-bold mt-2">₹{totalValue.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
           </div>
+          <div className="rounded-2xl border border-border bg-gradient-card p-5 shadow-card">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">GST collected</p>
+            <p className="font-mono text-4xl font-bold mt-2 text-success">₹{gstCollected.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</p>
+          </div>
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className="rounded-2xl border border-border bg-gradient-card p-5 shadow-card">
+            <h3 className="font-semibold mb-4">Monthly trend — invoices & GST</h3>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={months}>
+                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="label" stroke="var(--muted-foreground)" fontSize={12} />
+                  <YAxis yAxisId="left" stroke="var(--muted-foreground)" fontSize={12} allowDecimals={false} />
+                  <YAxis yAxisId="right" orientation="right" stroke="var(--muted-foreground)" fontSize={12} />
+                  <Tooltip
+                    contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
+                    formatter={(v: any, n: any) => n === "GST" ? [`₹${Number(v).toLocaleString("en-IN")}`, n] : [v, n]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="count" name="Invoices" stroke="var(--primary)" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="right" type="monotone" dataKey="gst" name="GST" stroke="var(--success)" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-gradient-card p-5 shadow-card">
+            <h3 className="font-semibold mb-4">Top risky vendors</h3>
+            {topRisky.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-12 text-center">No flagged vendors 🎉</p>
+            ) : (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topRisky} layout="vertical" margin={{ left: 10 }}>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" stroke="var(--muted-foreground)" fontSize={12} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" stroke="var(--muted-foreground)" fontSize={11} width={110} />
+                    <Tooltip
+                      contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8 }}
+                      cursor={{ fill: "var(--muted)" }}
+                    />
+                    <Bar dataKey="flagged" name="Flagged invoices" fill="var(--destructive)" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </div>
+
 
         {total === 0 ? (
           <div className="rounded-3xl border border-dashed border-border bg-gradient-card p-10 md:p-16 text-center shadow-card">
