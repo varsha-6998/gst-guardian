@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { Logo } from "./Logo";
 import { Button } from "./ui/button";
+import { AlertsBell } from "./AlertsBell";
 import { useAuth } from "@/lib/auth-context";
 import {
   LayoutDashboard,
