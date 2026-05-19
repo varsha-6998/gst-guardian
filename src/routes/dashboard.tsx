@@ -43,7 +43,7 @@ function DashboardPage() {
     const fetchRows = async () => {
       const { data } = await supabase
         .from("invoices")
-        .select("id, status, fraud_risk, compliance_score, total_amount, seller_name, invoice_number, created_at")
+        .select("id, status, fraud_risk, compliance_score, total_amount, cgst, sgst, igst, gstin, seller_name, invoice_number, created_at")
         .order("created_at", { ascending: false });
       setRows((data ?? []) as InvoiceRow[]);
     };
