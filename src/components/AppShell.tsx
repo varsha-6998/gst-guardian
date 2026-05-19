@@ -79,11 +79,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <Settings className="h-4 w-4" /> Settings
           </Link>
-          <div className="px-3 py-2 mt-2">
-            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-            <p className="text-[10px] uppercase tracking-wider text-primary mt-0.5">
-              {role ?? "user"}
-            </p>
+          <div className="px-3 py-2 mt-2 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+              <p className="text-[10px] uppercase tracking-wider text-primary mt-0.5">
+                {role ?? "user"}
+              </p>
+            </div>
+            <AlertsBell />
           </div>
           <Button
             variant="ghost"
